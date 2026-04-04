@@ -1,0 +1,216 @@
+<div class="onboarding-root">
+  <div class="onboarding-card">
+
+    <!-- Header -->
+    <div class="onboarding-header">
+      <div class="logo-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" class="logo-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <h1 class="app-title">Stitch Design Studio</h1>
+      <p class="app-subtitle">Set up your workspace in a few steps</p>
+    </div>
+
+    <!-- Step Indicators -->
+    <div class="step-indicators">
+      <div class="step-indicator" [class.active]="currentStep >= 1" [class.done]="currentStep > 1">
+        <div class="step-dot">
+          <svg *ngIf="currentStep > 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="step-check">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+          </svg>
+          <span *ngIf="currentStep <= 1">1</span>
+        </div>
+        <span class="step-label">Stitch API</span>
+      </div>
+      <div class="step-line" [class.active]="currentStep > 1"></div>
+      <div class="step-indicator" [class.active]="currentStep >= 2" [class.done]="currentStep > 2">
+        <div class="step-dot">
+          <svg *ngIf="currentStep > 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="step-check">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+          </svg>
+          <span *ngIf="currentStep <= 2">2</span>
+        </div>
+        <span class="step-label">Supabase</span>
+      </div>
+      <div class="step-line" [class.active]="currentStep > 2"></div>
+      <div class="step-indicator" [class.active]="currentStep >= 3">
+        <div class="step-dot">
+          <span>3</span>
+        </div>
+        <span class="step-label">Ready</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Stitch OAuth -->
+    <div *ngIf="currentStep === 1" class="step-content">
+      <h2 class="step-title">Connect Google Stitch</h2>
+      <p class="step-description">
+        Stitch requires a Google OAuth2 access token. Run the command below in your terminal to get one:
+      </p>
+      <div class="code-block">
+        <code>gcloud auth print-access-token</code>
+      </div>
+      <p class="step-description" style="margin-top:8px">
+        No gcloud? <a href="https://cloud.google.com/sdk/docs/install" target="_blank" rel="noopener" class="doc-link">Install the Google Cloud SDK →</a>
+        Then run <code class="inline-code">gcloud auth login</code> first.
+      </p>
+
+      <div class="form-group">
+        <label class="form-label" for="accessToken">OAuth Access Token <span class="required">*</span></label>
+        <input
+          id="accessToken"
+          type="password"
+          class="form-input"
+          [(ngModel)]="accessToken"
+          placeholder="ya29...."
+          autocomplete="off"
+          [disabled]="step1Loading"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="googleProjectId">
+          Google Cloud Project ID <span class="required">*</span>
+        </label>
+        <input
+          id="googleProjectId"
+          type="text"
+          class="form-input"
+          [(ngModel)]="googleCloudProjectId"
+          placeholder="my-project-123"
+          [disabled]="step1Loading"
+        />
+        <span class="field-hint">Find this in the Google Cloud Console or run: <code class="inline-code">gcloud config get project</code></span>
+      </div>
+
+      <div *ngIf="step1Error" class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" class="alert-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {{ step1Error }}
+      </div>
+
+      <button
+        class="btn btn-primary"
+        (click)="validateStitch()"
+        [disabled]="step1Loading || !step1Valid"
+      >
+        <app-loading-indicator *ngIf="step1Loading" size="sm" message=""></app-loading-indicator>
+        <span>{{ step1Loading ? 'Validating...' : 'Validate & Continue' }}</span>
+      </button>
+    </div>
+
+    <!-- Step 2: Supabase -->
+    <div *ngIf="currentStep === 2" class="step-content">
+      <h2 class="step-title">Connect Supabase</h2>
+      <p class="step-description">
+        Stitch Design Studio uses Supabase to store your generated screens and project history.
+        <a href="https://supabase.com/dashboard" target="_blank" rel="noopener" class="doc-link">Create a free project →</a>
+      </p>
+
+      <div class="sql-setup-block">
+        <p class="sql-setup-label">
+          <strong>Step 1:</strong> Run this SQL in your
+          <a href="https://supabase.com/dashboard" target="_blank" rel="noopener" class="doc-link">Supabase SQL Editor</a>
+          first (Project → SQL Editor → New query):
+        </p>
+        <div class="code-block sql-block">
+<code>CREATE TABLE IF NOT EXISTS projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stitch_project_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT 'My Designs',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS screens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  stitch_screen_id TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  html_url TEXT,
+  image_url TEXT,
+  parent_screen_id UUID REFERENCES screens(id),
+  device_type TEXT DEFAULT 'DESKTOP',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS chat_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'system')),
+  content TEXT NOT NULL,
+  screen_id UUID REFERENCES screens(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code>
+        </div>
+        <p class="sql-setup-label" style="margin-top:8px"><strong>Step 2:</strong> Enter your Supabase credentials below.</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="supabaseUrl">Project URL <span class="required">*</span></label>
+        <input
+          id="supabaseUrl"
+          type="url"
+          class="form-input"
+          [(ngModel)]="supabaseUrl"
+          placeholder="https://xyzxyz.supabase.co"
+          [disabled]="step2Loading"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="supabaseAnonKey">Anon (Public) Key <span class="required">*</span></label>
+        <input
+          id="supabaseAnonKey"
+          type="password"
+          class="form-input"
+          [(ngModel)]="supabaseAnonKey"
+          placeholder="eyJhbGciOiJIUzI1NiIs..."
+          autocomplete="off"
+          [disabled]="step2Loading"
+        />
+      </div>
+
+      <div *ngIf="step2Error" class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" class="alert-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {{ step2Error }}
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" (click)="goBackToStep(1)" [disabled]="step2Loading">
+          ← Back
+        </button>
+        <button
+          class="btn btn-primary"
+          (click)="validateSupabase()"
+          [disabled]="step2Loading || !supabaseUrl.trim() || !supabaseAnonKey.trim()"
+        >
+          <app-loading-indicator *ngIf="step2Loading" size="sm" message=""></app-loading-indicator>
+          <span>{{ step2Loading ? 'Connecting...' : 'Connect & Continue' }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Initializing -->
+    <div *ngIf="currentStep === 3" class="step-content step-loading">
+      <div *ngIf="step3Loading" class="initializing">
+        <app-loading-indicator size="lg" message="Setting up your workspace..."></app-loading-indicator>
+        <p class="initializing-detail">Creating your Stitch project and provisioning database tables.</p>
+      </div>
+
+      <div *ngIf="step3Error" class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" class="alert-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div class="alert-body">
+          <p class="alert-message">{{ step3Error }}</p>
+          <button class="btn btn-primary retry-btn" (click)="initializeWorkspace()">Retry</button>
+          <button class="btn btn-ghost retry-btn" (click)="goBackToStep(2)">← Back to Supabase</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

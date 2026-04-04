@@ -1,0 +1,58 @@
+<div
+  class="screen-card"
+  [class.selected]="selected"
+  (click)="onCardClick()"
+  tabindex="0"
+  role="button"
+  [attr.aria-label]="'Screen: ' + screen?.prompt"
+  (keydown.enter)="onCardClick()"
+>
+  <div class="card-image-wrapper">
+    <img
+      *ngIf="screen?.image_url; else noImage"
+      [src]="screen.image_url"
+      [alt]="screen.prompt"
+      class="card-image"
+      loading="lazy"
+    />
+    <ng-template #noImage>
+      <div class="card-placeholder">
+        <svg xmlns="http://www.w3.org/2000/svg" class="placeholder-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        <span>No preview</span>
+      </div>
+    </ng-template>
+
+    <div class="card-actions">
+      <button
+        class="expand-btn"
+        (click)="onExpandClick($event)"
+        title="Expand preview"
+        aria-label="Expand screen preview"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="btn-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+    </div>
+
+    <div *ngIf="selected" class="selected-badge">
+      <svg xmlns="http://www.w3.org/2000/svg" class="check-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd"
+          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+          clip-rule="evenodd" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="card-info">
+    <p class="card-prompt" [title]="screen?.prompt">{{ truncatedPrompt }}</p>
+    <div class="card-meta">
+      <span class="device-badge">{{ screen?.device_type || 'DESKTOP' }}</span>
+      <span class="card-date">{{ formattedDate }}</span>
+    </div>
+  </div>
+</div>

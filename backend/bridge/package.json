@@ -1,0 +1,10 @@
+{
+  "name": "stitch-bridge",
+  "version": "1.0.0",
+  "description": "Node.js bridge for Google Stitch SDK",
+  "main": "stitch-bridge.js",
+  "type": "module",
+  "dependencies": {
+    "@google/stitch-sdk": "latest"
+  }
+}

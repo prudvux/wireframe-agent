@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Angular build output
+frontend/dist/
+frontend/.angular/
+
+# Environment & secrets
+.env
+.env.*
+*.env
+backend/app/config.py.local
+
+# Logs
+*.log
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE & tools
+.vscode/
+.idea/
+*.suo
+*.user
+.claude/

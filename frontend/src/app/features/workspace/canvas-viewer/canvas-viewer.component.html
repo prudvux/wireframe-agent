@@ -1,0 +1,34 @@
+<div class="canvas-viewer">
+
+  <!-- Header -->
+  <div class="canvas-header">
+    <h2 class="canvas-title">Canvas</h2>
+    <span class="screen-count" *ngIf="screens.length > 0">
+      {{ screens.length }} screen{{ screens.length !== 1 ? 's' : '' }}
+    </span>
+  </div>
+
+  <!-- Empty State -->
+  <div *ngIf="screens.length === 0" class="empty-canvas">
+    <div class="empty-icon-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="empty-icon">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    </div>
+    <p class="empty-title">No screens yet</p>
+    <p class="empty-subtitle">Describe a UI screen in the chat to generate your first design.</p>
+  </div>
+
+  <!-- Screen Grid -->
+  <div *ngIf="screens.length > 0" class="screens-grid">
+    <app-screen-card
+      *ngFor="let screen of screens; trackBy: trackById"
+      [screen]="screen"
+      [selected]="isSelected(screen)"
+      (cardClick)="selectScreen($event)"
+      (expandClick)="onExpand($event)"
+    ></app-screen-card>
+  </div>
+
+</div>

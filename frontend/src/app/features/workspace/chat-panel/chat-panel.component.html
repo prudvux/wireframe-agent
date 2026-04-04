@@ -1,0 +1,146 @@
+<div class="chat-panel">
+
+  <!-- Header -->
+  <div class="chat-header">
+    <h2 class="chat-title">Design Chat</h2>
+    <div class="mode-toggle">
+      <button
+        class="mode-btn"
+        [class.active]="mode === 'design'"
+        (click)="setMode('design')"
+      >Design</button>
+      <button
+        class="mode-btn"
+        [class.active]="mode === 'edit'"
+        [disabled]="!selectedScreen"
+        (click)="setMode('edit')"
+        [title]="!selectedScreen ? 'Select a screen to edit' : 'Edit selected screen'"
+      >Edit</button>
+    </div>
+  </div>
+
+  <!-- Selected Screen Indicator -->
+  <div *ngIf="selectedScreen && mode === 'edit'" class="selected-screen-bar">
+    <img
+      *ngIf="selectedScreen.image_url"
+      [src]="selectedScreen.image_url"
+      [alt]="selectedScreen.prompt"
+      class="selected-thumb"
+    />
+    <div class="selected-info">
+      <span class="selected-label">Editing:</span>
+      <span class="selected-prompt">{{ selectedScreen.prompt | slice:0:50 }}{{ selectedScreen.prompt.length > 50 ? '...' : '' }}</span>
+    </div>
+  </div>
+
+  <!-- Messages -->
+  <div class="messages-list" #messagesList>
+    <div *ngIf="messages.length === 0" class="empty-state">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      </div>
+      <p class="empty-text">Describe a UI screen to get started</p>
+      <p class="empty-hint">Try: "A modern login page with email and password fields"</p>
+    </div>
+
+    <ng-container *ngFor="let msg of messages">
+      <div
+        *ngIf="msg.content !== '__remove_loading__'"
+        class="message"
+        [class.message-user]="msg.role === 'user'"
+        [class.message-system]="msg.role === 'system'"
+      >
+        <div *ngIf="msg.role === 'system'" class="message-avatar">
+          <svg xmlns="http://www.w3.org/2000/svg" class="avatar-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+
+        <div class="message-body">
+          <!-- Loading bubble -->
+          <div *ngIf="msg.loading" class="message-bubble loading-bubble">
+            <div class="typing-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+
+          <!-- Regular bubble -->
+          <div *ngIf="!msg.loading" class="message-bubble">
+            <p class="message-text">{{ msg.content }}</p>
+            <!-- Screen thumbnail if associated -->
+            <div *ngIf="msg.role === 'system' && msg.screen_id" class="message-screen-thumb">
+              <img
+                *ngIf="msg.screen?.image_url"
+                [src]="msg.screen?.image_url || ''"
+                [alt]="msg.screen?.prompt || ''"
+                class="thumb-image"
+              />
+            </div>
+          </div>
+          <span class="message-time" *ngIf="msg.created_at">{{ msg.created_at | date:'shortTime' }}</span>
+        </div>
+      </div>
+    </ng-container>
+
+    <div #messagesEnd></div>
+  </div>
+
+  <!-- Error Message -->
+  <div *ngIf="errorMessage" class="error-strip">
+    <span>{{ errorMessage }}</span>
+    <button class="error-dismiss" (click)="clearError()">✕</button>
+  </div>
+
+  <!-- Input Area -->
+  <div class="chat-input-area">
+    <div class="device-select-row">
+      <label class="device-label">Device:</label>
+      <select class="device-select" [(ngModel)]="deviceType" [disabled]="generating || mode === 'edit'">
+        <option value="DESKTOP">Desktop</option>
+        <option value="MOBILE">Mobile</option>
+        <option value="TABLET">Tablet</option>
+      </select>
+
+      <button
+        *ngIf="selectedScreen && mode === 'edit'"
+        class="variants-btn"
+        [disabled]="generating || !prompt.trim()"
+        (click)="generateVariants()"
+        title="Generate variants of selected screen"
+      >
+        Variants
+      </button>
+    </div>
+
+    <div class="input-row">
+      <textarea
+        #promptInput
+        class="prompt-textarea"
+        [(ngModel)]="prompt"
+        [placeholder]="mode === 'edit' ? 'Describe the changes...' : 'Describe the screen you want to design...'"
+        [disabled]="generating"
+        (keydown)="onPromptKeydown($event)"
+        rows="3"
+      ></textarea>
+
+      <button
+        class="send-btn"
+        (click)="submit()"
+        [disabled]="generating || !prompt.trim()"
+        [title]="mode === 'edit' ? 'Edit screen (Ctrl+Enter)' : 'Generate screen (Ctrl+Enter)'"
+      >
+        <app-loading-indicator *ngIf="generating" size="sm" message=""></app-loading-indicator>
+        <svg *ngIf="!generating" xmlns="http://www.w3.org/2000/svg" class="send-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+        </svg>
+      </button>
+    </div>
+    <p class="input-hint">Ctrl+Enter to send</p>
+  </div>
+
+</div>

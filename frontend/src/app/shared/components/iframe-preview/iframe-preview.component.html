@@ -1,0 +1,23 @@
+<div class="iframe-preview-container">
+  <div class="iframe-toolbar">
+    <span class="iframe-title">{{ title }}</span>
+    <a *ngIf="htmlUrl" [href]="htmlUrl" target="_blank" rel="noopener noreferrer" class="open-link">
+      Open in new tab
+    </a>
+  </div>
+  <div class="iframe-wrapper">
+    <iframe
+      *ngIf="safeUrl; else noPreview"
+      [src]="safeUrl"
+      [title]="title"
+      sandbox=""
+      class="preview-frame"
+      loading="lazy"
+    ></iframe>
+    <ng-template #noPreview>
+      <div class="no-preview">
+        <p>No preview available</p>
+      </div>
+    </ng-template>
+  </div>
+</div>
