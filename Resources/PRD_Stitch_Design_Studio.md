@@ -1,36 +1,37 @@
 # Product Requirements Document: Stitch Design Studio
 
-**Version:** 1.0  
-**Date:** April 4, 2026  
-**Author:** [Your Name]  
-**Status:** Draft
+**Version:** 1.1 (As-Built)
+**Date:** April 5, 2026
+**Status:** Implemented (MVP)
+
+> This document reflects the actual implemented state of the application as of v1.1. Sections that differ from the original v1.0 draft are marked **[UPDATED]**.
 
 ---
 
-## 1. Executive summary
+## 1. Executive Summary
 
 Stitch Design Studio is a web application that combines an AI-powered chat interface with a read-only design canvas to enable users to generate, iterate on, and manage UI screen designs using Google's Stitch SDK. Users describe screens in natural language through a chat panel, and the generated designs appear automatically on an adjacent canvas viewer — creating a seamless prompt-to-screen workflow without requiring any design tool expertise.
 
 ---
 
-## 2. Problem statement
+## 2. Problem Statement
 
 Designers and non-designers alike face a gap between imagining a UI and producing one. Traditional design tools (Figma, Sketch) require significant skill. Existing AI design tools often operate as black boxes with no iterative refinement. There is no product today that combines conversational AI interaction with programmatic UI generation from Google Stitch in a unified workspace where users can generate, refine, and review screens in one place.
 
 ---
 
-## 3. Goals and objectives
+## 3. Goals and Objectives
 
-| Goal | Success metric |
+| Goal | Success Metric |
 |------|---------------|
-| Enable non-designers to produce production-quality UI screens from text prompts | User can go from prompt to rendered screen in under 60 seconds |
+| Enable non-designers to produce UI screens from text prompts | User can go from prompt to rendered screen in under 60 seconds |
 | Support iterative refinement through conversational editing | Users can edit a generated screen via follow-up prompts without starting over |
 | Provide a persistent workspace with full design history | All generated screens and chat history are retrievable across sessions |
 | Deliver a self-service onboarding experience | Users configure their own Stitch and Supabase credentials with zero developer intervention |
 
 ---
 
-## 4. Target users
+## 4. Target Users
 
 **Primary:** Product managers, startup founders, and UX researchers who need to rapidly prototype UI concepts without design tool proficiency.
 
@@ -38,178 +39,192 @@ Designers and non-designers alike face a gap between imagining a UI and producin
 
 ---
 
-## 5. User flow
+## 5. User Flow
 
-### 5.1 Onboarding
+### 5.1 Onboarding **[UPDATED]**
 
 The application has no pre-configured backend database or API keys. Each user brings their own credentials.
 
-**Step 1 — Stitch authentication**
+**Step 1 — Stitch Authentication**
 
-- User is presented with an input field for their Stitch API key.
-- Optionally, a Google Cloud Project ID field is shown for OAuth-based authentication.
-- On clicking "Validate," the backend calls the Stitch SDK (`stitch.projects()`) to verify the key.
-- If validation fails, an inline error is displayed with a link to the Stitch documentation for obtaining a key.
-- If validation succeeds, a green confirmation indicator appears and Step 2 becomes active.
+- User is presented with two input fields: **OAuth2 Access Token** and **Google Cloud Project ID**.
+- The access token is obtained by running `gcloud auth print-access-token` in a terminal. Tokens expire after ~1 hour.
+- On clicking "Validate & Continue," the backend calls the Stitch SDK (`stitch.projects()`) via the Node.js bridge to verify the credentials.
+- If validation fails, an inline error is displayed with the specific error code and message.
+- If validation succeeds, credentials are saved to the server-side session and Step 2 becomes active.
 
-**Step 2 — Supabase configuration**
+> **Implementation note:** The original PRD specified a Stitch API key (`AQ.` format). The Stitch MCP endpoint (`stitch.googleapis.com/mcp`) does not support API keys — only Google OAuth2 access tokens. Authentication was changed to `access_token + google_cloud_project_id`.
 
-- User enters their Supabase project URL and anon (public) key.
-- On clicking "Connect," the backend tests connectivity by running a lightweight query against the Supabase REST API.
-- If validation fails, an inline error is shown.
-- If validation succeeds, the backend auto-provisions the required database tables (see Section 9.2) in the user's Supabase instance if they do not already exist.
+**Step 2 — Supabase Configuration**
 
-**Step 3 — Workspace initialization**
+- The UI displays the full SQL migration script that the user must run manually in their Supabase SQL Editor before proceeding.
+- User enters their Supabase **Project URL** and **anon JWT key** (`eyJ...` format).
+- On clicking "Connect & Continue," the backend tests connectivity.
+- Credentials are saved to the server-side session.
 
-- The backend creates a default Stitch project (`stitch.callTool("create_project", { title: "My Designs" })`).
+> **Implementation note:** The original PRD specified auto-provisioning tables via `/rest/v1/rpc/exec_sql`. This endpoint does not exist in Supabase. Tables must be created manually by the user via the SQL Editor. The SQL is shown in the onboarding UI.
+
+**Step 3 — Workspace Initialization**
+
+- The backend creates a default Stitch project via the Node bridge (`stitch.createProject("My Designs")`).
 - The project ID is stored in the user's Supabase `projects` table.
-- Credentials are saved to an encrypted server-side session.
+- Credentials and `default_project_id` are saved to the encrypted server-side session.
 - The user is redirected to the design workspace.
 
-### 5.2 Design workspace
+**Session Resume**
+
+- If the user navigates away mid-onboarding, the `GET /api/onboard/session-status` endpoint returns a `resume_step` field indicating how far they got.
+- If Steps 1 & 2 are complete but Step 3 failed, the onboarding component automatically jumps to Step 3 and retries initialization on load.
+- If fully authenticated (all 3 steps done), the user is immediately redirected to the workspace.
+
+### 5.2 Design Workspace
 
 The workspace is a split-pane layout occupying the full viewport.
 
-**Left panel — Chat interface (40% width)**
+**Left Panel — Chat Interface (40% width)**
 
-- A scrollable message list showing the conversation history between the user and the system.
-- A text input area at the bottom with two action buttons:
+- A scrollable message list showing conversation history.
+- A text input with two action buttons:
   - **"Design"** — Sends the prompt as a new screen generation request.
-  - **"Edit"** — Sends the prompt as an edit instruction for the currently selected screen on the canvas. This button is disabled when no screen is selected.
-- Messages from the system include a loading state while Stitch processes the request, followed by a confirmation message with a thumbnail of the generated screen.
-- The chat supports the following interaction types:
-  - **Generate**: "Design a login page with email and password fields"
-  - **Edit**: (with a screen selected) "Make the background dark and add a sidebar"
-  - **Variants**: "Show me 3 different color schemes for this screen"
+  - **"Edit"** — Sends the prompt as an edit instruction for the currently selected screen. Disabled when no screen is selected.
+- Loading indicator displayed while Stitch processes the request.
+- System messages include a thumbnail of the generated screen.
 
-**Right panel — Canvas viewer (60% width)**
+**Right Panel — Canvas Viewer (60% width)**
 
-- A read-only gallery of all generated screens for the current project.
-- Each screen is displayed as a clickable thumbnail card (using the Stitch screenshot URL).
-- Clicking a thumbnail selects that screen (highlighted border) and enables the "Edit" button in the chat panel.
-- A selected screen can be expanded into a full-preview mode that renders the actual HTML in a sandboxed iframe.
-- Screens are displayed in reverse chronological order (newest first).
-- Each screen card shows: the thumbnail image, the prompt used to generate it, and a timestamp.
+- A read-only gallery of all generated screens.
+- Each screen is a clickable thumbnail card showing: image, prompt (truncated), and timestamp.
+- Clicking a thumbnail selects it (highlighted border) and enables the "Edit" button.
+- A selected screen can be expanded into a full-preview modal rendering the HTML in a sandboxed iframe.
+- Screens displayed in reverse chronological order (newest first).
 
-### 5.3 Screen generation lifecycle
+**Error State**
 
-1. User types a screen description in the chat input.
-2. User clicks "Design."
-3. The Angular frontend sends a POST request to FastAPI with the prompt text and project ID.
-4. FastAPI invokes the Node.js bridge script, which calls `project.generate(prompt)` via the Stitch SDK.
-5. Stitch processes the prompt and returns a Screen object.
-6. The Node bridge calls `screen.getHtml()` and `screen.getImage()` to obtain the HTML download URL and screenshot download URL.
-7. The Node bridge returns both URLs plus the Stitch screen ID to FastAPI.
-8. FastAPI stores the screen metadata (screen ID, project ID, prompt, HTML URL, image URL, timestamp) in the user's Supabase `screens` table.
-9. FastAPI returns the full screen payload to the Angular frontend.
-10. The frontend appends a success message to the chat and adds the new screen thumbnail to the canvas.
+- If the workspace loads without an active session/project, a full-screen error state is shown with a "Complete Onboarding →" button linking back to `/onboarding`.
 
-### 5.4 Screen editing lifecycle
+### 5.3 Screen Generation Lifecycle
 
-1. User selects an existing screen on the canvas by clicking its thumbnail.
-2. User types an edit instruction in the chat input.
-3. User clicks "Edit."
-4. The Angular frontend sends a POST request to FastAPI with the edit prompt and the selected screen's Stitch screen ID.
-5. FastAPI invokes the Node bridge, which calls `screen.edit(prompt)` via the Stitch SDK.
-6. Stitch returns a new Screen object (the edited version).
-7. The same extraction and storage process from steps 6–10 of Section 5.3 applies.
-8. The canvas adds the edited screen as a new entry (the original screen is preserved in history).
+1. User types a screen description in the chat input and clicks "Design."
+2. The Angular frontend sends `POST /api/generate` with the prompt and project ID.
+3. FastAPI reads credentials from the session, logs the user message to Supabase `chat_history`.
+4. FastAPI looks up the `stitch_project_id` from Supabase `projects`.
+5. FastAPI invokes the Node.js bridge with `action: "generate"`, `access_token`, `project_id`, `stitch_project_id`, `prompt`, and `device_type`.
+6. The bridge calls `project.generate(prompt, deviceType)` — note: `deviceType` is a positional string argument, not an options object.
+7. Stitch processes the prompt and returns a Screen object.
+8. The bridge calls `screen.getHtml()` and `screen.getImage()` and returns both URLs to FastAPI.
+9. FastAPI stores the screen in Supabase `screens` and logs a system message to `chat_history`.
+10. FastAPI returns the screen payload and chat message to the Angular frontend.
+11. The frontend adds the screen thumbnail to the canvas and appends a success message to the chat.
 
-### 5.5 Variant generation
+### 5.4 Screen Editing Lifecycle
 
 1. User selects an existing screen on the canvas.
-2. User types a variant instruction (e.g., "Try different layouts").
-3. User clicks "Design" (variants are treated as a generation action).
-4. The backend calls `screen.variants(prompt, { variantCount: 3 })`.
-5. Multiple screens are returned and each is stored and displayed on the canvas.
+2. User types an edit instruction and clicks "Edit."
+3. The frontend sends `POST /api/edit` with the prompt, screen ID, and project ID.
+4. FastAPI looks up the `stitch_screen_id` from Supabase `screens`.
+5. The Node bridge calls `screen.edit(prompt, deviceType)`.
+6. The edited screen is stored in Supabase with `parent_screen_id` referencing the original.
+7. The new screen appears on the canvas; the original is preserved.
+
+### 5.5 Variant Generation
+
+1. User selects an existing screen on the canvas.
+2. User types a variant instruction and clicks "Variants."
+3. The backend calls `screen.variants(prompt, { variantCount: 3 }, deviceType)`.
+4. Multiple screens are returned, stored, and displayed on the canvas.
 
 ---
 
-## 6. Functional requirements
+## 6. Functional Requirements
 
-### 6.1 Onboarding module
+### 6.1 Onboarding Module **[UPDATED]**
 
-| ID | Requirement | Priority |
-|----|------------|----------|
-| F-ONB-01 | The app shall display a multi-step onboarding form collecting Stitch API key and Supabase credentials | P0 |
-| F-ONB-02 | The app shall validate the Stitch API key by attempting to list projects via the Stitch SDK | P0 |
-| F-ONB-03 | The app shall validate Supabase credentials by performing a test REST API call | P0 |
-| F-ONB-04 | The app shall auto-provision required database tables in the user's Supabase instance on first connection | P0 |
-| F-ONB-05 | The app shall display clear error messages with remediation links when validation fails | P0 |
-| F-ONB-06 | The app shall store validated credentials in an encrypted server-side session | P0 |
-| F-ONB-07 | The app shall support both API key and OAuth (access token + project ID) authentication for Stitch | P1 |
+| ID | Requirement | Status |
+|----|------------|--------|
+| F-ONB-01 | Multi-step onboarding form collecting Stitch OAuth token + GCP project ID and Supabase credentials | Implemented |
+| F-ONB-02 | Validate Stitch credentials by calling `stitch.projects()` via the Node bridge | Implemented |
+| F-ONB-03 | Validate Supabase credentials by performing a test query | Implemented |
+| F-ONB-04 | Display SQL migration script in the UI for manual execution | Implemented |
+| F-ONB-05 | Display clear error messages with the actual error detail from FastAPI | Implemented |
+| F-ONB-06 | Store validated credentials in an encrypted server-side session (24-hour TTL) | Implemented |
+| F-ONB-07 | `session-status` endpoint returns `resume_step` to allow mid-onboarding recovery | Implemented |
+| F-ONB-08 | Auto-jump to Step 3 and retry if Steps 1 & 2 are already complete in session | Implemented |
 
-### 6.2 Chat interface
+### 6.2 Chat Interface
 
-| ID | Requirement | Priority |
-|----|------------|----------|
-| F-CHAT-01 | The chat panel shall display a scrollable, chronological message history | P0 |
-| F-CHAT-02 | The chat panel shall provide a text input with "Design" and "Edit" action buttons | P0 |
-| F-CHAT-03 | The "Edit" button shall be disabled when no screen is selected on the canvas | P0 |
-| F-CHAT-04 | The chat shall display a loading indicator while a generation or edit request is in progress | P0 |
-| F-CHAT-05 | System messages shall include a thumbnail preview of the generated screen | P1 |
-| F-CHAT-06 | The chat shall persist conversation history to the user's Supabase `chat_history` table | P1 |
-| F-CHAT-07 | The chat shall support a "Variants" action for generating multiple design alternatives | P2 |
+| ID | Requirement | Status |
+|----|------------|--------|
+| F-CHAT-01 | Scrollable, chronological message history | Implemented |
+| F-CHAT-02 | Text input with "Design" and "Edit" action buttons | Implemented |
+| F-CHAT-03 | "Edit" button disabled when no screen is selected | Implemented |
+| F-CHAT-04 | Loading indicator during generation/edit | Implemented |
+| F-CHAT-05 | System messages include thumbnail preview of generated screen | Implemented |
+| F-CHAT-06 | Conversation history persisted to Supabase `chat_history` | Implemented |
+| F-CHAT-07 | "Variants" action for generating multiple design alternatives | Implemented |
 
-### 6.3 Canvas viewer
+### 6.3 Canvas Viewer
 
-| ID | Requirement | Priority |
-|----|------------|----------|
-| F-CVS-01 | The canvas shall display all generated screens as clickable thumbnail cards in a grid layout | P0 |
-| F-CVS-02 | Clicking a thumbnail shall select the screen (visual highlight) and enable the "Edit" button | P0 |
-| F-CVS-03 | A selected screen shall be expandable into a full HTML preview rendered in a sandboxed iframe | P0 |
-| F-CVS-04 | Screens shall be displayed in reverse chronological order | P0 |
-| F-CVS-05 | Each screen card shall show the thumbnail, the generation prompt, and a timestamp | P0 |
-| F-CVS-06 | The canvas shall auto-scroll or highlight new screens when they are generated | P1 |
-| F-CVS-07 | The canvas shall support switching between grid view and single-screen expanded view | P2 |
+| ID | Requirement | Status |
+|----|------------|--------|
+| F-CVS-01 | Grid gallery of generated screens as clickable thumbnail cards | Implemented |
+| F-CVS-02 | Clicking a thumbnail selects it and enables "Edit" | Implemented |
+| F-CVS-03 | Expanded full HTML preview in a sandboxed iframe modal | Implemented |
+| F-CVS-04 | Screens displayed in reverse chronological order | Implemented |
+| F-CVS-05 | Each card shows thumbnail, prompt, and timestamp | Implemented |
+| F-CVS-06 | Empty state shown when no screens exist yet | Implemented |
 
 ### 6.4 Backend API
 
-| ID | Requirement | Priority |
-|----|------------|----------|
-| F-API-01 | POST `/api/onboard/validate-stitch` — Validate Stitch credentials and return project list | P0 |
-| F-API-02 | POST `/api/onboard/validate-supabase` — Validate Supabase credentials and provision tables | P0 |
-| F-API-03 | POST `/api/generate` — Accept a prompt and project ID, generate a screen via Stitch, store in Supabase, return screen payload | P0 |
-| F-API-04 | POST `/api/edit` — Accept a prompt and screen ID, edit the screen via Stitch, store result, return updated payload | P0 |
-| F-API-05 | GET `/api/screens/{project_id}` — Return all screens for a project from Supabase | P0 |
-| F-API-06 | GET `/api/projects` — Return all projects for the current session | P1 |
-| F-API-07 | POST `/api/variants` — Accept a prompt, screen ID, and variant options; return multiple screen payloads | P2 |
-| F-API-08 | DELETE `/api/screens/{screen_id}` — Remove a screen from Supabase (does not delete from Stitch) | P2 |
+| ID | Endpoint | Status |
+|----|----------|--------|
+| F-API-01 | `POST /api/onboard/validate-stitch` | Implemented |
+| F-API-02 | `POST /api/onboard/validate-supabase` | Implemented |
+| F-API-03 | `POST /api/onboard/initialize-workspace` | Implemented |
+| F-API-04 | `GET /api/onboard/session-status` | Implemented |
+| F-API-05 | `POST /api/generate` | Implemented |
+| F-API-06 | `POST /api/edit` | Implemented |
+| F-API-07 | `POST /api/variants` | Implemented |
+| F-API-08 | `GET /api/screens/{project_id}` | Implemented |
+| F-API-09 | `GET /api/projects` | Implemented |
+| F-API-10 | `GET /api/chat-history/{project_id}` | Implemented |
+| F-API-11 | `DELETE /api/screens/{screen_id}` | Implemented |
 
 ---
 
-## 7. Non-functional requirements
+## 7. Non-Functional Requirements
 
-| ID | Requirement | Category |
-|----|------------|----------|
-| NF-01 | Screen generation shall complete within 30 seconds (Stitch API latency + processing) | Performance |
-| NF-02 | The frontend shall be responsive and usable on viewports 1024px and wider | Responsiveness |
-| NF-03 | Stitch API keys and Supabase credentials shall never be stored in plaintext on the server | Security |
-| NF-04 | The sandboxed iframe for HTML preview shall use the `sandbox` attribute to prevent script execution in generated HTML | Security |
-| NF-05 | All API endpoints shall validate session authentication before processing requests | Security |
-| NF-06 | The application shall handle Stitch SDK errors gracefully with user-friendly messages mapped to error codes (AUTH_FAILED, RATE_LIMITED, etc.) | Reliability |
-| NF-07 | The application shall function correctly if Supabase tables already exist (idempotent provisioning) | Reliability |
-| NF-08 | The Node.js bridge process shall have a 5-minute timeout to accommodate slow Stitch generations | Reliability |
-
----
-
-## 8. Technology stack
-
-| Layer | Technology | Justification |
-|-------|-----------|---------------|
-| Frontend | Angular 17+ (TypeScript) | Client requirement; strong typing, modular architecture |
-| Backend | Python FastAPI | Client requirement; async support, fast API development |
-| UI generation | Google Stitch SDK (`@google/stitch-sdk`) | Core product dependency; generates HTML + screenshots from prompts |
-| Database | Supabase (user-provided) | Client requirement; PostgreSQL-backed, REST API, real-time capabilities |
-| Node bridge | Node.js 18+ subprocess | Required because Stitch SDK is TypeScript-native; FastAPI calls it via subprocess |
-| Session management | FastAPI session middleware with encrypted cookies | Stateless server, credentials persist across requests |
-| Styling | Angular Material or Tailwind CSS | Rapid UI development with consistent design system |
+| ID | Requirement | Status |
+|----|------------|--------|
+| NF-01 | Screen generation completes within 30–60 seconds | Met (Stitch latency ~20–40s) |
+| NF-02 | Frontend usable on viewports 1024px and wider | Met |
+| NF-03 | Credentials never stored in plaintext — encrypted session cookies | Met |
+| NF-04 | Sandboxed iframe uses `sandbox` attribute to prevent script execution | Met |
+| NF-05 | All API endpoints validate session authentication before processing | Met |
+| NF-06 | Stitch SDK errors mapped to user-friendly messages | Met |
+| NF-07 | Idempotent Supabase table creation (SQL uses `CREATE TABLE IF NOT EXISTS`) | Met |
+| NF-08 | Node.js bridge has configurable timeout (default: 5 minutes) | Met |
+| NF-09 | Windows compatibility: bridge uses `subprocess.run()` in `ThreadPoolExecutor` | Met |
 
 ---
 
-## 9. Technical architecture
+## 8. Technology Stack **[UPDATED]**
 
-### 9.1 System overview
+| Layer | Technology | Notes |
+|-------|-----------|-------|
+| Frontend | Angular 15 (NgModule-based, TypeScript) | NgModule architecture, not standalone components |
+| Backend | Python FastAPI | Async, Starlette SessionMiddleware, CORS |
+| UI Generation | Google Stitch SDK (`@google/stitch-sdk`) | OAuth2 only; API keys not supported |
+| Authentication | Google OAuth2 via `gcloud auth print-access-token` | Tokens expire after ~1 hour |
+| Database | Supabase (user-provided) | PostgreSQL; JWT anon key required |
+| Node Bridge | Node.js 18+ subprocess | `subprocess.run()` in `ThreadPoolExecutor` (Windows-compatible) |
+| Session Management | Starlette `SessionMiddleware` (encrypted cookies, 24h TTL) | |
+| Styling | Plain SCSS (no UI framework) | Custom design system |
+
+---
+
+## 9. Technical Architecture
+
+### 9.1 System Overview
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -218,42 +233,45 @@ The workspace is a split-pane layout occupying the full viewport.
 │  │   Chat Panel      │    │   Canvas Viewer        │ │
 │  │   - Prompt input  │───▶│   - Screen thumbnails  │ │
 │  │   - Design/Edit   │    │   - Iframe preview     │ │
-│  │   - Chat history  │    │   - Selection state     │ │
+│  │   - Chat history  │    │   - Selection state    │ │
 │  └────────┬─────────┘    └────────────────────────┘ │
 └───────────┼─────────────────────────────────────────┘
-            │ HTTP (REST)
+            │ HTTP REST (withCredentials: true)
 ┌───────────▼─────────────────────────────────────────┐
 │                  FastAPI Backend                      │
 │  - /api/onboard/*     (credential validation)        │
 │  - /api/generate      (new screen)                   │
 │  - /api/edit          (refine screen)                │
-│  - /api/screens       (list screens)                 │
-│  - Session middleware  (encrypted credentials)       │
+│  - /api/variants      (multiple alternatives)        │
+│  - /api/screens       (list/delete)                  │
+│  - SessionMiddleware   (encrypted credentials)       │
 └───────┬──────────────────────────┬──────────────────┘
-        │ subprocess                │ REST API
+        │ subprocess.run()          │ REST API
+        │ (ThreadPoolExecutor)      │ (supabase-py)
 ┌───────▼──────────┐      ┌───────▼──────────────────┐
 │  Node.js Bridge   │      │  User's Supabase         │
-│  - stitch-sdk     │      │  - projects table        │
-│  - JSON stdin/out │      │  - screens table          │
-│                   │      │  - chat_history table     │
-└───────┬──────────┘      └──────────────────────────┘
-        │ HTTPS
+│  stitch-bridge.js │      │  - projects table        │
+│  JSON stdin/stdout│      │  - screens table         │
+│  @google/stitch-  │      │  - chat_history table    │
+│  sdk              │      └──────────────────────────┘
+└───────┬──────────┘
+        │ HTTPS (MCP transport)
 ┌───────▼──────────┐
 │  Google Stitch    │
-│  MCP Server       │
-│  (googleapis.com) │
+│  stitch.          │
+│  googleapis.com   │
 └──────────────────┘
 ```
 
-### 9.2 Database schema (auto-provisioned in user's Supabase)
+### 9.2 Database Schema (User-Provisioned in Supabase)
 
 **Table: `projects`**
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key (auto-generated) |
-| stitch_project_id | text | Stitch project ID |
-| title | text | Project display name |
+| stitch_project_id | text | Stitch project ID returned by `createProject()` |
+| title | text | Project display name (default: "My Designs") |
 | created_at | timestamptz | Creation timestamp |
 
 **Table: `screens`**
@@ -262,11 +280,11 @@ The workspace is a split-pane layout occupying the full viewport.
 |--------|------|-------------|
 | id | uuid | Primary key (auto-generated) |
 | project_id | uuid | Foreign key to `projects.id` |
-| stitch_screen_id | text | Stitch screen ID |
+| stitch_screen_id | text | Screen ID returned by the Stitch SDK |
 | prompt | text | The user prompt that generated this screen |
 | html_url | text | Download URL for the screen's HTML |
-| image_url | text | Download URL for the screen's screenshot |
-| parent_screen_id | uuid | Nullable; references the screen this was edited from |
+| image_url | text | Screenshot URL for the thumbnail |
+| parent_screen_id | uuid | Nullable; the screen this was edited from |
 | device_type | text | MOBILE, DESKTOP, TABLET, or AGNOSTIC |
 | created_at | timestamptz | Creation timestamp |
 
@@ -281,25 +299,23 @@ The workspace is a split-pane layout occupying the full viewport.
 | screen_id | uuid | Nullable; links to the screen generated by this message |
 | created_at | timestamptz | Creation timestamp |
 
-### 9.3 Node.js bridge specification
+### 9.3 Node.js Bridge Specification **[UPDATED]**
 
-The bridge is a standalone Node.js script (`stitch-bridge.js`) that FastAPI invokes as a subprocess. Communication happens via JSON over stdin/stdout.
+The bridge is a standalone Node.js ESM script (`stitch-bridge.js`) that FastAPI invokes via `subprocess.run()` in a `ThreadPoolExecutor`. Communication is via JSON over stdin/stdout.
 
 **Input format (stdin):**
 
 ```json
 {
-  "action": "generate | edit | variants | validate | list_screens",
-  "api_key": "user's Stitch API key",
-  "project_id": "Stitch project ID",
-  "screen_id": "Stitch screen ID (for edit/variants)",
+  "action": "validate | create_project | generate | edit | variants",
+  "access_token": "ya29.xxx",
+  "project_id": "google-cloud-project-id",
+  "stitch_project_id": "stitch-numeric-project-id",
+  "screen_id": "stitch-screen-id (for edit/variants)",
   "prompt": "User's text prompt",
   "device_type": "DESKTOP",
-  "variant_options": {
-    "variantCount": 3,
-    "creativeRange": "EXPLORE",
-    "aspects": ["COLOR_SCHEME", "LAYOUT"]
-  }
+  "title": "Project title (for create_project)",
+  "variant_options": { "variantCount": 3 }
 }
 ```
 
@@ -311,111 +327,117 @@ The bridge is a standalone Node.js script (`stitch-bridge.js`) that FastAPI invo
   "screens": [
     {
       "screen_id": "abc123",
-      "project_id": "xyz789",
-      "html_url": "https://...",
-      "image_url": "https://..."
+      "project_id": "14110130285973928315",
+      "html_url": "https://contribution.usercontent.google.com/...",
+      "image_url": "https://lh3.googleusercontent.com/...",
+      "device_type": "DESKTOP"
     }
   ],
+  "project": { "id": "14110130285973928315", "title": "My Designs" },
+  "projects": [{ "id": "...", "title": "..." }],
   "error": null
 }
 ```
 
-**Error output:**
+**Key implementation details:**
 
-```json
-{
-  "success": false,
-  "screens": [],
-  "error": {
-    "code": "AUTH_FAILED",
-    "message": "Invalid API key",
-    "recoverable": false
-  }
-}
+- `StitchToolClient` is instantiated with `{ accessToken, projectId }` and passed to `new Stitch(toolClient)` — not constructed directly via `new Stitch({ apiKey })`.
+- `project.generate(prompt, deviceType)` takes `deviceType` as a positional string, not an options object.
+- `screen.edit(prompt, deviceType)` and `screen.variants(prompt, variantOptions, deviceType)` follow the same pattern.
+- The bridge calls `toolClient.close()` after every action to release the MCP connection.
+
+### 9.4 Session and Credential Management
+
+- Credentials are collected during onboarding and stored in an encrypted server-side session via Starlette `SessionMiddleware` (signed with `SECRET_KEY`).
+- Session TTL: 24 hours (configurable via `settings.SESSION_MAX_AGE`).
+- Session keys stored: `stitch_access_token`, `stitch_project_id` (GCP), `supabase_url`, `supabase_anon_key`, `default_project_id`.
+- After expiration, the user is redirected to onboarding. Chat history and screens in Supabase are preserved.
+- `session-status` endpoint returns `resume_step` (1, 3, or 4) so the frontend can resume mid-flow.
+
+### 9.5 Windows Compatibility **[UPDATED]**
+
+Python's `asyncio.create_subprocess_exec` throws `NotImplementedError` on Windows when using uvicorn's default `SelectorEventLoop`. The bridge uses `subprocess.run()` (synchronous) wrapped in `concurrent.futures.ThreadPoolExecutor` to avoid blocking the event loop:
+
+```python
+_executor = ThreadPoolExecutor(max_workers=4)
+
+def _call_bridge_sync(payload):
+    result = subprocess.run(["node", bridge_path], input=json.dumps(payload),
+                            capture_output=True, text=True, timeout=settings.BRIDGE_TIMEOUT)
+    return json.loads(result.stdout.strip())
+
+async def call_bridge(payload):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, _call_bridge_sync, payload)
 ```
-
-### 9.4 Session and credential management
-
-- Credentials (Stitch API key, Supabase URL, Supabase anon key) are collected during onboarding and stored in an encrypted server-side session using FastAPI's `itsdangerous` signed cookies or a similar mechanism.
-- The session has a configurable TTL (default: 24 hours). After expiration, the user is redirected to the onboarding screen.
-- Credentials are never logged, never stored in plaintext, and never returned to the frontend after initial submission.
-- Each API request reads credentials from the session and passes them to the Node bridge or Supabase client as needed.
 
 ---
 
-## 10. Angular frontend structure
+## 10. Angular Frontend Structure
 
 ```
 src/
 ├── app/
 │   ├── core/
 │   │   ├── services/
-│   │   │   ├── api.service.ts            # HTTP client for FastAPI
-│   │   │   ├── session.service.ts         # Session state management
-│   │   │   └── screen-selection.service.ts # Shared state for selected screen
+│   │   │   ├── api.service.ts              # HTTP client for FastAPI (port 8003)
+│   │   │   ├── session.service.ts          # In-memory session state (BehaviorSubject)
+│   │   │   └── screen-selection.service.ts # Shared selected screen state
 │   │   ├── guards/
-│   │   │   └── auth.guard.ts             # Redirects to onboarding if no session
+│   │   │   └── auth.guard.ts              # Redirects to /onboarding if no session
 │   │   └── interceptors/
-│   │       └── error.interceptor.ts      # Global error handling
+│   │       └── error.interceptor.ts       # Extracts error.detail from FastAPI 4xx/5xx
 │   ├── features/
 │   │   ├── onboarding/
-│   │   │   ├── onboarding.component.ts   # Multi-step credential form
+│   │   │   ├── onboarding.component.ts    # 3-step credential form with resume logic
 │   │   │   ├── onboarding.component.html
 │   │   │   └── onboarding.component.scss
 │   │   └── workspace/
-│   │       ├── workspace.component.ts    # Split-pane container
+│   │       ├── workspace.component.ts     # Split-pane; checks session on load
 │   │       ├── workspace.component.html
 │   │       ├── workspace.component.scss
 │   │       ├── chat-panel/
-│   │       │   ├── chat-panel.component.ts
-│   │       │   ├── chat-panel.component.html
-│   │       │   └── chat-panel.component.scss
 │   │       └── canvas-viewer/
-│   │           ├── canvas-viewer.component.ts
-│   │           ├── canvas-viewer.component.html
-│   │           └── canvas-viewer.component.scss
 │   ├── shared/
 │   │   ├── components/
-│   │   │   ├── screen-card/              # Thumbnail card for a screen
-│   │   │   ├── loading-indicator/        # Spinner/skeleton for generation
-│   │   │   └── iframe-preview/           # Sandboxed HTML preview
+│   │   │   ├── screen-card/               # Thumbnail card
+│   │   │   ├── loading-indicator/         # Spinner
+│   │   │   └── iframe-preview/            # Sandboxed HTML preview
 │   │   └── models/
 │   │       ├── screen.model.ts
 │   │       ├── project.model.ts
 │   │       └── chat-message.model.ts
-│   ├── app.routes.ts
+│   ├── app-routing.module.ts
+│   ├── app.module.ts                      # NgModule (not standalone)
 │   └── app.component.ts
-├── environments/
-│   ├── environment.ts
-│   └── environment.prod.ts
 └── styles.scss
 ```
 
 ---
 
-## 11. FastAPI backend structure
+## 11. FastAPI Backend Structure
 
 ```
 backend/
 ├── app/
-│   ├── main.py                    # FastAPI app initialization, CORS, session middleware
-│   ├── config.py                  # Environment and session configuration
+│   ├── main.py                    # FastAPI app, CORS (localhost:4200), SessionMiddleware
+│   ├── config.py                  # Settings (SECRET_KEY, BRIDGE_TIMEOUT)
 │   ├── routers/
-│   │   ├── onboard.py             # /api/onboard/* routes
-│   │   ├── generate.py            # /api/generate, /api/edit, /api/variants routes
-│   │   └── screens.py             # /api/screens, /api/projects routes
+│   │   ├── onboard.py             # /api/onboard/* — validate, initialize, session-status
+│   │   ├── generate.py            # /api/generate, /api/edit, /api/variants
+│   │   └── screens.py             # /api/screens, /api/projects, /api/chat-history
 │   ├── services/
-│   │   ├── stitch_bridge.py       # Subprocess manager for Node.js bridge
-│   │   ├── supabase_client.py     # Dynamic Supabase client (per-user credentials)
-│   │   └── session_manager.py     # Encrypted session read/write
+│   │   ├── stitch_bridge.py       # subprocess.run() + ThreadPoolExecutor bridge caller
+│   │   ├── supabase_client.py     # Per-user Supabase client (supabase-py)
+│   │   └── session_manager.py     # Session read/write helpers
 │   ├── models/
-│   │   ├── requests.py            # Pydantic request models
-│   │   └── responses.py           # Pydantic response models
+│   │   ├── requests.py            # Pydantic models (StitchValidateRequest uses access_token)
+│   │   └── responses.py
 │   └── migrations/
-│       └── provision_tables.sql   # SQL for auto-provisioning Supabase tables
+│       └── provision_tables.sql   # SQL shown in onboarding UI (run manually)
 ├── bridge/
-│   ├── stitch-bridge.js           # Node.js bridge script
-│   ├── package.json
+│   ├── stitch-bridge.js           # ESM Node.js bridge (StitchToolClient + Stitch)
+│   ├── package.json               # type: "module", @google/stitch-sdk
 │   └── package-lock.json
 ├── requirements.txt
 └── README.md
@@ -423,15 +445,15 @@ backend/
 
 ---
 
-## 12. API contract
+## 12. API Contract **[UPDATED]**
 
 ### POST `/api/onboard/validate-stitch`
 
 **Request:**
 ```json
 {
-  "api_key": "STITCH_API_KEY_HERE",
-  "google_cloud_project_id": "optional-project-id"
+  "access_token": "ya29.xxx",
+  "google_cloud_project_id": "my-gcp-project"
 }
 ```
 
@@ -439,17 +461,7 @@ backend/
 ```json
 {
   "valid": true,
-  "projects": [
-    { "id": "4044680601076201931", "title": "Existing Project" }
-  ]
-}
-```
-
-**Response (failure):**
-```json
-{
-  "valid": false,
-  "error": "AUTH_FAILED: Invalid API key. Visit https://stitch.withgoogle.com/docs to obtain a key."
+  "projects": [{ "id": "14110130285973928315", "title": "Untitled" }]
 }
 ```
 
@@ -463,12 +475,26 @@ backend/
 }
 ```
 
-**Response (success):**
+**Response:**
 ```json
-{
-  "valid": true,
-  "tables_provisioned": true
-}
+{ "valid": true, "tables_provisioned": true }
+```
+
+### GET `/api/onboard/session-status`
+
+**Response (fully authenticated):**
+```json
+{ "authenticated": true, "default_project_id": "uuid", "resume_step": 4 }
+```
+
+**Response (Steps 1 & 2 done, Step 3 incomplete):**
+```json
+{ "authenticated": true, "default_project_id": null, "resume_step": 3 }
+```
+
+**Response (not authenticated):**
+```json
+{ "authenticated": false, "resume_step": 1 }
 ```
 
 ### POST `/api/generate`
@@ -487,12 +513,13 @@ backend/
 {
   "screen": {
     "id": "uuid",
-    "stitch_screen_id": "stitch-abc123",
+    "stitch_screen_id": "863c1e8492d540198da763ab28a1b5b6",
     "prompt": "A login page with email and password fields",
-    "html_url": "https://storage.googleapis.com/...",
-    "image_url": "https://storage.googleapis.com/...",
+    "html_url": "https://contribution.usercontent.google.com/...",
+    "image_url": "https://lh3.googleusercontent.com/...",
     "device_type": "DESKTOP",
-    "created_at": "2026-04-04T10:30:00Z"
+    "parent_screen_id": null,
+    "created_at": "2026-04-05T10:30:00Z"
   },
   "chat_message": {
     "role": "system",
@@ -502,97 +529,70 @@ backend/
 }
 ```
 
-### POST `/api/edit`
+---
 
-**Request:**
-```json
-{
-  "prompt": "Make the background dark and add a sidebar",
-  "screen_id": "uuid-of-screen-to-edit",
-  "project_id": "uuid-of-project"
-}
-```
+## 13. Error Handling Strategy
 
-**Response:** Same structure as `/api/generate`, with `parent_screen_id` populated.
+| Error Code | User-Facing Message | Notes |
+|------------|--------------------|----|
+| AUTH_FAILED | "Your Stitch credentials are invalid or expired. Please update them in settings." | OAuth token expired; re-run `gcloud auth print-access-token` |
+| RATE_LIMITED | "Stitch is rate-limiting requests. Please wait a moment and try again." | |
+| NOT_FOUND | "The screen or project was not found in Stitch." | |
+| NETWORK_ERROR | "Unable to reach Stitch servers. Check your internet connection." | |
+| VALIDATION_ERROR | "Stitch couldn't process that prompt. Try rephrasing your description." | |
+| TIMEOUT | "Stitch request timed out. Please try again." | Default timeout: 5 minutes |
+| UNKNOWN_ERROR | "Something went wrong. Please try again." | Full error logged server-side |
 
-### GET `/api/screens/{project_id}`
-
-**Response:**
-```json
-{
-  "screens": [
-    {
-      "id": "uuid",
-      "stitch_screen_id": "stitch-abc123",
-      "prompt": "A login page with email and password fields",
-      "html_url": "https://...",
-      "image_url": "https://...",
-      "parent_screen_id": null,
-      "device_type": "DESKTOP",
-      "created_at": "2026-04-04T10:30:00Z"
-    }
-  ]
-}
-```
+The Angular `ErrorInterceptor` extracts `error.detail` from FastAPI HTTP error responses and surfaces it as `err.message` in components.
 
 ---
 
-## 13. Error handling strategy
-
-| Stitch error code | User-facing message | Action |
-|-------------------|--------------------|---------| 
-| AUTH_FAILED | "Your Stitch API key is invalid or expired. Please update it in settings." | Redirect to onboarding |
-| RATE_LIMITED | "Stitch is rate-limiting requests. Please wait a moment and try again." | Show retry button with countdown |
-| NOT_FOUND | "The screen or project was not found in Stitch. It may have been deleted externally." | Remove from canvas, refresh list |
-| NETWORK_ERROR | "Unable to reach Stitch servers. Check your internet connection." | Show retry button |
-| VALIDATION_ERROR | "Stitch couldn't process that prompt. Try rephrasing your description." | Keep chat input focused |
-| UNKNOWN_ERROR | "Something went wrong. Please try again." | Log error details server-side |
-
----
-
-## 14. Assumptions and constraints
+## 14. Assumptions and Constraints **[UPDATED]**
 
 **Assumptions:**
 
-- Users will obtain their own Stitch API key from stitch.withgoogle.com before using the application.
-- Users will create their own Supabase project before onboarding.
-- The Stitch SDK's `getHtml()` returns a publicly accessible download URL that can be loaded in an iframe.
-- The Stitch SDK's `getImage()` returns a publicly accessible screenshot URL suitable for use as an `<img>` src.
-- The Stitch API latency for screen generation is under 30 seconds for typical prompts.
+- Users have a Google Cloud account and can run `gcloud auth print-access-token` to obtain OAuth2 tokens.
+- Users have created a Supabase project and can access the SQL Editor to run the migration.
+- The Stitch SDK's `getHtml()` and `getImage()` return accessible URLs (they do, via Google's CDN).
+- Stitch API latency for screen generation is typically 20–40 seconds.
 
 **Constraints:**
 
-- The Stitch SDK is TypeScript-only, requiring a Node.js subprocess bridge since the backend is Python FastAPI.
-- The application is desktop-focused (minimum viewport: 1024px) due to the split-pane layout.
-- The Stitch SDK is not an officially supported Google product and may have breaking changes, rate limits, or access restrictions.
-- Generated HTML URLs from Stitch may have expiration times; the application does not currently cache or mirror HTML content.
+- **OAuth tokens expire after ~1 hour.** Users must re-onboard when their token expires.
+- **Supabase JWT anon key required.** The `sb_publishable_` format is not supported by `supabase-py`.
+- **Tables must be created manually.** Supabase does not expose a `/rpc/exec_sql` endpoint for programmatic DDL.
+- The Stitch SDK is TypeScript-only, requiring the Node.js subprocess bridge.
+- The application is desktop-focused (minimum viewport: 1024px).
+- The `asyncio` subprocess API is not available on Windows — `subprocess.run()` in `ThreadPoolExecutor` is used instead.
 
 ---
 
-## 15. Risks and mitigations
+## 15. Risks and Mitigations **[UPDATED]**
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Stitch SDK access is revoked or deprecated | Medium | Critical | Abstract Stitch calls behind a service interface so an alternative generator can be swapped in |
-| Stitch HTML/image URLs expire | Medium | High | Cache HTML content in Supabase storage or download on generation |
-| Node.js bridge subprocess crashes | Low | High | Implement process restart logic, timeout handling, and structured error propagation |
-| User's Supabase instance has RLS policies blocking table creation | Medium | Medium | Document required Supabase permissions in onboarding; detect and surface specific errors |
-| Session cookie expires mid-workflow | Low | Medium | Auto-detect expired sessions and prompt re-authentication without losing chat history |
+| OAuth token expires mid-session | High | Medium | Surface clear AUTH_FAILED error; show instructions to get fresh token |
+| Stitch SDK breaking changes | Medium | Critical | Bridge is isolated; only `stitch-bridge.js` needs updating |
+| Stitch HTML/image URLs expire | Medium | High | Future: cache content in Supabase Storage on generation |
+| Supabase RLS policies blocking inserts | Medium | Medium | Documented in onboarding; error messages surface Supabase detail |
+| Node.js bridge subprocess crashes | Low | High | Timeout handling, structured error propagation, stderr logging |
+| Port conflicts on Windows | Medium | Low | Use any free port; frontend BASE_URL is a single constant to update |
 
 ---
 
-## 16. Future enhancements (post-MVP)
+## 16. Future Enhancements (Post-MVP)
 
 | Feature | Description | Priority |
 |---------|------------|----------|
+| Token refresh flow | Auto-detect expired OAuth token and prompt re-authentication without losing workspace state | P0 |
+| Token persistence | Store the token in the session and surface a "refresh token" button in the workspace nav | P1 |
 | Multi-project support | Allow users to create and switch between multiple Stitch projects | P1 |
-| Screen export | Download generated HTML as a standalone file or export as a PNG | P1 |
-| Device type selector | Let users choose between MOBILE, DESKTOP, TABLET, and AGNOSTIC in the chat panel | P1 |
+| Screen export | Download generated HTML as a standalone file or PNG | P1 |
+| Device type selector | Let users choose MOBILE, DESKTOP, TABLET in the chat panel | P1 |
+| Supabase auto-provisioning | Use Supabase Management API (with service role key) to create tables programmatically | P1 |
 | Collaborative sharing | Share a read-only link to the canvas viewer for stakeholder review | P2 |
-| Screen version tree | Visualize the edit history as a branching tree (original → edit → variant) | P2 |
-| Local credential storage | Option to store encrypted credentials in browser for faster re-authentication | P2 |
-| Stitch OAuth flow | Implement full Google OAuth instead of requiring manual API key entry | P2 |
-| Real-time sync | Use Supabase real-time subscriptions to sync canvas updates across browser tabs | P3 |
+| Screen version tree | Visualize the edit history as a branching tree | P2 |
+| Real-time sync | Use Supabase real-time subscriptions to sync canvas across browser tabs | P3 |
 
 ---
 
@@ -600,24 +600,28 @@ backend/
 
 | Term | Definition |
 |------|-----------|
-| Stitch SDK | Google's `@google/stitch-sdk` npm package that generates UI screens from text prompts via an MCP server |
-| MCP | Model Context Protocol; the communication protocol used by the Stitch SDK to talk to Google's generation servers |
-| Screen | A single generated UI design, consisting of an HTML file and a screenshot image |
-| Canvas | The right panel of the workspace; a read-only gallery for viewing generated screens |
-| Node bridge | A lightweight Node.js script that FastAPI calls as a subprocess to invoke the TypeScript Stitch SDK |
-| Supabase | An open-source Firebase alternative providing a PostgreSQL database with REST API; user-provided in this application |
-| Onboarding | The initial setup flow where users provide their Stitch and Supabase credentials |
+| Stitch SDK | Google's `@google/stitch-sdk` npm package that generates UI screens from text prompts |
+| StitchToolClient | The low-level MCP transport client; accepts `{ accessToken, projectId }` |
+| Stitch | The high-level wrapper class; constructed as `new Stitch(toolClient)` |
+| MCP | Model Context Protocol; communication protocol used by the Stitch SDK |
+| OAuth2 Access Token | A short-lived Google credential (`ya29.xxx`) obtained via `gcloud auth print-access-token` |
+| GCP Project ID | Google Cloud project ID (e.g., `my-project-123`) where the Stitch API is enabled |
+| Screen | A single generated UI design: an HTML file + screenshot image |
+| Canvas | The right panel; a read-only gallery for viewing generated screens |
+| Node Bridge | `stitch-bridge.js` — Node.js script invoked by FastAPI via `subprocess.run()` |
+| Supabase | PostgreSQL-backed BaaS; user-provided; requires JWT anon key (`eyJ...`) |
+| ThreadPoolExecutor | Python's `concurrent.futures.ThreadPoolExecutor`; used to run synchronous subprocess calls without blocking the async event loop |
 
 ---
 
-## 18. Acceptance criteria
+## 18. Acceptance Criteria (MVP — Achieved)
 
-The MVP is considered complete when:
-
-1. A new user can open the application, enter valid Stitch and Supabase credentials, and be redirected to the workspace without errors.
-2. The user can type a screen description in the chat panel, click "Design," and see the generated screen appear on the canvas within 60 seconds.
-3. The user can select a screen on the canvas, type an edit instruction, click "Edit," and see the updated screen appear on the canvas.
-4. All generated screens persist across browser sessions (stored in the user's Supabase).
-5. Chat history is preserved and displayed when returning to the workspace.
-6. Invalid credentials during onboarding produce clear, actionable error messages.
-7. Stitch SDK errors during generation produce user-friendly messages in the chat panel.
+1. ✅ A new user can open the application, complete the 3-step onboarding with their Stitch OAuth token and Supabase credentials, and be redirected to the workspace.
+2. ✅ The user can type a screen description in the chat panel, click "Design," and see the generated screen appear on the canvas within 60 seconds.
+3. ✅ The user can select a screen on the canvas, type an edit instruction, click "Edit," and see the updated screen appear on the canvas.
+4. ✅ All generated screens persist across browser sessions (stored in the user's Supabase).
+5. ✅ Chat history is preserved and displayed when returning to the workspace.
+6. ✅ Invalid credentials during onboarding produce clear, actionable error messages showing the actual error detail.
+7. ✅ Stitch SDK errors during generation produce user-friendly messages in the chat panel.
+8. ✅ If onboarding is partially complete, the app resumes from the correct step automatically.
+9. ✅ The workspace detects a missing session and shows a "Complete Onboarding" prompt instead of an unhelpful blank screen.
