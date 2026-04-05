@@ -1,4 +1,4 @@
-# Product Requirements Document: Stitch Design Studio
+# Product Requirements Document: Stitch Design Integration
 
 **Version:** 1.1 (As-Built)
 **Date:** April 5, 2026
@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-Stitch Design Studio is a web application that combines an AI-powered chat interface with a read-only design canvas to enable users to generate, iterate on, and manage UI screen designs using Google's Stitch SDK. Users describe screens in natural language through a chat panel, and the generated designs appear automatically on an adjacent canvas viewer — creating a seamless prompt-to-screen workflow without requiring any design tool expertise.
+This stitch integrationed web application combines an AI-powered chat interface with a read-only design canvas to enable users to generate, iterate on, and manage UI screen designs using Google's Stitch SDK. Users describe screens in natural language through a chat panel, and the generated designs appear automatically on an adjacent canvas viewer — creating a seamless prompt-to-screen workflow without requiring any design tool expertise.
 
 ---
 

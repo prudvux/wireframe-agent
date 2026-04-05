@@ -1,4 +1,4 @@
-# Stitch Design Studio
+# Stitch Integration
 
 Generate UI screen designs from plain English descriptions — no design skills needed.
 
